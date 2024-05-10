@@ -54,7 +54,7 @@ jobs:
           
           - name: Import app to tenant
             run: |
-                APP_ID=$(./qlik raw post v1/apps/import --query spaceId=${{ env.SPACEID }} --body-file "./app/${{ env.APPNAME }}.qvf" | jq -r '.attributes.id')
+                APP_ID=$(./qlik raw post v1/apps/import --body-file "./app/${{ env.APPNAME }}.qvf" | jq -r '.attributes.id')
                 echo "APP_ID=$APP_ID" >> $GITHUB_ENV
                 echo "Imported appId ${{ env.APP_ID }}"
 
