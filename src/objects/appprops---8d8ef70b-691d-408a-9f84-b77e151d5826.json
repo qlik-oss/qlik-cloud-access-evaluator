@@ -1,0 +1,19 @@
+{
+  "qInfo": {
+    "qId": "8d8ef70b-691d-408a-9f84-b77e151d5826",
+    "qType": "appprops"
+  },
+  "qMetaDef": {},
+  "sheetTitleBgColor": "",
+  "sheetTitleGradientColor": "",
+  "sheetTitleColor": "",
+  "sheetLogoThumbnail": {
+    "qStaticContentUrlDef": {
+      "qUrl": "/api/v1/apps/a1beddc4-d204-47b1-bda1-c7409ab17777/media/files/Qlik-Logo_RGB.png"
+    }
+  },
+  "sheetLogoPosition": "",
+  "rtl": false,
+  "theme": "horizon",
+  "disableCellNavMenu": true
+}

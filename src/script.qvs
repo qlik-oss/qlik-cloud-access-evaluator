@@ -1,0 +1,1313 @@
+///$tab ** Configuration **
+TRACE Configuration;
+
+/////////////////////////////////////////// REQUIRED ///////////////////////////////////////////
+// IMPORTANT: To run this application, the user must be a "Tenant Admin" and must have an 
+// API Key, which requires the "Developer Role" and APIs to be enabled within the tenant.
+
+/*
+The name of the REST connection that will be used. You must first create a valid REST connection to any endpoint to Qlik Sense tenant.
+		Example: '<Space>:<Connection Name>'
+        			Note: ':<Connection Name>' is the relative path which will check for a connection in the current space.
+		Example Connection: 
+					URL: 			https://<tenant-name>.<region>.qlikcloud.com/api/v1/items
+					Header: 		"Authorization"
+					Header Value: 	"Bearer <token>"
+		For reference on how to connect: 
+					https://qlik.dev/tutorials/generate-your-first-api-key
+*/
+SET vu_rest_connection = ':monitoring_apps_REST';
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+///$tab << About >>
+/* 
+
+    _______                                    __________             ______             _____              
+    ___    |_______________________________    ___  ____/__   _______ ___  /___  _______ __  /______________
+    __  /| |  ___/  ___/  _ \_  ___/_  ___/    __  __/  __ | / /  __ `/_  /_  / / /  __ `/  __/  __ \_  ___/
+    _  ___ / /__ / /__ /  __/(__  )_(__  )     _  /___  __ |/ // /_/ /_  / / /_/ // /_/ // /_ / /_/ /  /    
+    /_/  |_\___/ \___/ \___//____/ /____/      /_____/  _____/ \__,_/ /_/  \__,_/ \__,_/ \__/ \____//_/     
+    
+	
+    The Access Evaluator is a comprehensive dashboard to analyze user roles, access, and permissions across a Qlik Sense tenant.
+
+    Copyright 2023 QlikTech International
+    Created by Daniel Pilla, Master Principal Analytics Platform Architect, Qlik
+ 
+*/
+///$tab Variables
+SUB variables
+    
+    LET vAPICallCounter = 0;
+	LET vu_tenant_fqdn 	= GetSysAttr('tenantUrl');
+                            
+END SUB
+///$tab Check Version
+SUB check_version
+
+    // check to see whether the app is the latest version
+
+    LIB CONNECT TO '$(vu_rest_connection)';
+
+    RestConnectorMasterTable:
+    SQL SELECT 
+        "id",
+        "name",
+        "version",
+        "source",
+        "qcmaInstaller",
+        "oemInstaller"
+    FROM JSON (wrap on) "root"
+    WITH CONNECTION (  
+        URL "https://raw.githubusercontent.com/qlik-oss/qlik-cloud-monitoring-apps/main/manifests/resources.json",
+        HTTPHEADER "Authorization" ""
+    );
+
+    [Version]:
+    LOAD	
+        [version]
+    RESIDENT RestConnectorMasterTable
+    WHERE name='$(vAppName)';
+
+    DROP TABLE RestConnectorMasterTable;
+
+    LET vLatestVersion = Peek('version',0,'Version');
+    LET vIsLatestVersion = If('$(vLatestVersion)'='v$(vAppVersion)',1,0);
+
+    DROP TABLE Version;
+
+END SUB
+///$tab Roles
+SUB get_roles
+
+    SET vParams = 'limit=100';
+
+    DO
+
+      LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+      LIB CONNECT TO '$(vu_rest_connection)';
+
+      RestConnectorMasterTable:
+      SQL SELECT 
+          "__KEY_root",
+          (SELECT 
+              "id",
+              "tenantId",
+              "name",
+              "description",
+              "type",
+              "level",
+              "createdAt",
+              "lastUpdatedAt",
+              "__KEY_data",
+              "__FK_data",
+              (SELECT 
+                  "@Value",
+                  "__FK_permissions"
+              FROM "permissions" FK "__FK_permissions" ArrayValueAlias "@Value"),
+              (SELECT 
+                  "__KEY_links",
+                  "__FK_links",
+                  (SELECT 
+                      "href",
+                      "__FK_self"
+                  FROM "self" FK "__FK_self")
+              FROM "links" PK "__KEY_links" FK "__FK_links")
+          FROM "data" PK "__KEY_data" FK "__FK_data"),
+          (SELECT 
+              "__KEY_links_u0",
+              "__FK_links_u0",
+              (SELECT 
+                  "href" AS "href_u0",
+                  "__FK_self_u0"
+              FROM "self" FK "__FK_self_u0"),
+              (SELECT 
+                  "href" AS "href_u1",
+                  "__FK_next"
+              FROM "next" FK "__FK_next")
+          FROM "links" PK "__KEY_links_u0" FK "__FK_links_u0")
+      FROM JSON (wrap on) "root" PK "__KEY_root"
+      WITH CONNECTION (  
+        URL "https://$(vu_tenant_fqdn)/api/v1/roles?$(vParams)"
+      );
+
+      [RolePermissions]:
+      LOAD	
+          Subfield([@Value],':',1) AS UserRolePermissionProperty,
+          Subfield([@Value],':',2) AS UserRolePermissionAction,
+          '✔' AS UserRolePermissionCheck,
+          [__FK_permissions] & '|' & '$(vAPICallCounter)' AS [_UserRolePermissionKey]
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_permissions]);
+
+      [Roles]:
+      LOAD	
+          [id] AS UserRoleID,
+  //         [tenantId],
+          [name] AS UserRoleName,
+          [description] AS UserRoleDescription,
+          [type] AS UserRoleType,
+          [level] AS UserRoleLevel,
+  //         Timestamp([createdAt]) AS RoleCreatedAt,
+  //         [lastUpdatedAt],
+           [__KEY_data] & '|' & '$(vAPICallCounter)' AS [_UserRolePermissionKey]
+  //        [__FK_data]
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_data]);
+
+      NextURL:
+      LOAD	
+          [href_u1] AS NextURL
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_next]);
+
+
+      DROP TABLE RestConnectorMasterTable;
+
+      LET vParams = SubField(Peek('NextURL',0,'NextURL'),'?',-1);
+      LET vNextURLRows = NoOfRows('NextURL');
+
+      DROP TABLE NextURL;
+
+    LOOP WHILE $(vNextURLRows)>0;
+
+    Map_RoleName_RoleID:
+    MAPPING LOAD DISTINCT
+        UserRoleName,
+        UserRoleID
+    RESIDENT Roles;
+      
+END SUB
+
+
+
+///$tab Users
+SUB get_users
+
+    SET vParams = 'limit=100';
+
+    UserGroups:
+    LOAD * INLINE [
+        GroupID
+    ];
+
+    DO
+
+      LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+      LIB CONNECT TO '$(vu_rest_connection)';
+
+      RestConnectorMasterTable:
+      SQL SELECT 
+          "__KEY_root",
+          (SELECT 
+              "id" AS "id_u2",
+              "tenantId",
+              "status",
+              "subject",
+              "name" AS "name_u2",
+              "email",
+              "picture",
+              "locale",
+              "zoneinfo",
+              "preferredLocale",
+              "preferredZoneinfo",
+              "createdAt",
+              "lastUpdatedAt",
+              "created",
+              "lastUpdated",
+              "__KEY_data",
+              "__FK_data",
+              (SELECT 
+                  "@Value",
+                  "__FK_roles"
+              FROM "roles" FK "__FK_roles" ArrayValueAlias "@Value"),
+              (SELECT 
+                  "id",
+                  "name",
+                  "type",
+                  "level",
+                  "__FK_assignedRoles"
+              FROM "assignedRoles" FK "__FK_assignedRoles"),
+              (SELECT 
+                  "id" AS "id_u1",
+                  "name" AS "name_u1",
+                  "assignedRoles",
+                  "__KEY_assignedGroups",
+                  "__FK_assignedGroups",
+                  (SELECT 
+                      "id" AS "id_u0",
+                      "name" AS "name_u0",
+                      "type" AS "type_u0",
+                      "level" AS "level_u0",
+                      "__FK_assignedRoles_u0"
+                  FROM "assignedRoles" FK "__FK_assignedRoles_u0")
+              FROM "assignedGroups" PK "__KEY_assignedGroups" FK "__FK_assignedGroups"),
+              (SELECT 
+                  "__KEY_links",
+                  "__FK_links",
+                  (SELECT 
+                      "href",
+                      "__FK_self"
+                  FROM "self" FK "__FK_self")
+              FROM "links" PK "__KEY_links" FK "__FK_links")
+          FROM "data" PK "__KEY_data" FK "__FK_data"),
+          (SELECT 
+              "__KEY_links_u0",
+              "__FK_links_u0",
+              (SELECT 
+                  "href" AS "href_u0",
+                  "__FK_self_u0"
+              FROM "self" FK "__FK_self_u0"),
+              (SELECT 
+                  "href" AS "href_u1",
+                  "__FK_next"
+              FROM "next" FK "__FK_next")
+          FROM "links" PK "__KEY_links_u0" FK "__FK_links_u0")
+      FROM JSON (wrap on) "root" PK "__KEY_root"
+      WITH CONNECTION (  
+        URL "https://$(vu_tenant_fqdn)/api/v1/users?$(vParams)"
+      );
+
+      Users:
+      LOAD	
+          [id_u2] AS UserID,
+  //         [id] AS UserID,
+  //         [tenantId],
+  //         Date([created]) AS ReloadUserCreatedDate,
+  //         Date([lastUpdated]) AS ReloadUserLastUpdatedDate,
+          [status] AS UserStatus,
+          [name_u2] AS UserName,
+          Dual([name_u2],AutoNumber(id_u2)) AS UserNameUnique,
+          [subject] AS UserSubject,
+          [email] AS UserEmail,
+          [__KEY_data] & '|' & '$(vAPICallCounter)' AS [_UserKey]
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_data]);
+
+      [UserRoles]:
+      LOAD	
+          ApplyMap('Map_RoleName_RoleID',[@Value]) AS UserRoleID,
+          'Direct' AS UserRoleAssignmentType,
+          '✔' AS UserRoleCheck,
+          '<Direct>' AS UserRoleInheritedFromGroup,
+          '<Direct>' AS UserRoleInheritedFromGroupID,
+  //         [name],
+  //         [type],
+  //         [level],
+          [__FK_roles] & '|' & '$(vAPICallCounter)' AS [_UserKey]
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_roles]);
+
+  //     UserGroupRoles:
+  //     LOAD	
+  //     	[id_u0] AS [GroupRoleID],
+  //         'Inherited' AS RoleAssignmentType,
+  // //         [name_u0] AS [name_u0],
+  // //         [type_u0] AS [type_u0],
+  // //         [level_u0] AS [level_u0],
+  //         [__FK_assignedRoles_u0] AS [_UserAssignedRolesKey]
+  //     RESIDENT RestConnectorMasterTable
+  //     WHERE NOT IsNull([__FK_assignedRoles_u0]);
+
+      CONCATENATE(UserGroups)
+      LOAD	
+          [id_u1] AS [GroupID],
+  //                             [name_u1] AS [GroupName],
+  //                             [assignedRoles] AS [AssignedRoles(IsEmpty?)],
+  //         [__KEY_assignedGroups] AS [_UserAssignedRolesKey],
+          [__FK_assignedGroups] & '|' & '$(vAPICallCounter)' AS [_UserKey]
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_assignedGroups]);
+
+      NextURL:
+      LOAD	
+          [href_u1] AS NextURL
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_next]);
+
+
+      DROP TABLE RestConnectorMasterTable;
+
+      LET vParams = SubField(Peek('NextURL',0,'NextURL'),'?',-1);
+      LET vNextURLRows = NoOfRows('NextURL');
+
+      DROP TABLE NextURL;
+
+    LOOP WHILE $(vNextURLRows)>0;
+    
+    Map_UserID_UserName:
+    MAPPING LOAD DISTINCT
+    	UserID,
+        UserName
+    RESIDENT Users;
+        
+END SUB
+
+
+
+///$tab Groups
+SUB get_groups
+
+    SET vParams = 'limit=100';
+
+    Groups:
+    LOAD 
+    	'000000000000000000000001' AS GroupID,
+    	'Anyone at ' & Subfield('$(vu_tenant_fqdn)','.',1) AS GroupName,
+        'active' AS GroupStatus
+    AUTOGENERATE 1;
+
+    GroupAssignedRoles:
+    LOAD * INLINE [
+        GroupAssignedRoleID
+    ];
+
+    DO
+
+      LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+      LIB CONNECT TO '$(vu_rest_connection)';
+
+      RestConnectorMasterTable:
+      SQL SELECT 
+          "__KEY_root",
+          (SELECT 
+              "id" AS "id_u0",
+              "tenantId",
+              "createdAt",
+              "lastUpdatedAt",
+              "name" AS "name_u0",
+              "status",
+              "__KEY_data",
+              "__FK_data",
+              (SELECT 
+                  "__KEY_links",
+                  "__FK_links",
+                  (SELECT 
+                      "href",
+                      "__FK_self"
+                  FROM "self" FK "__FK_self")
+              FROM "links" PK "__KEY_links" FK "__FK_links"),
+              (SELECT 
+                  "id",
+                  "name",
+                  "type",
+                  "level",
+                  "__FK_assignedRoles"
+              FROM "assignedRoles" FK "__FK_assignedRoles")
+          FROM "data" PK "__KEY_data" FK "__FK_data"),
+          (SELECT 
+              "__KEY_links_u0",
+              "__FK_links_u0",
+              (SELECT 
+                  "href" AS "href_u0",
+                  "__FK_self_u0"
+              FROM "self" FK "__FK_self_u0"),
+              (SELECT 
+                  "href" AS "href_u1",
+                  "__FK_next"
+              FROM "next" FK "__FK_next")
+          FROM "links" PK "__KEY_links_u0" FK "__FK_links_u0")
+      FROM JSON (wrap on) "root" PK "__KEY_root"
+      WITH CONNECTION (  
+        URL "https://$(vu_tenant_fqdn)/api/v1/groups?$(vParams)"
+      );
+
+      CONCATENATE(Groups)
+      LOAD	
+          [id_u0] AS GroupID,
+  //         [tenantId],
+          [createdAt] AS GroupCreatedAt,
+  //         [lastUpdatedAt],
+          [name_u0] AS GroupName,
+          [status] AS GroupStatus,
+          [__KEY_data] & '|' & '$(vAPICallCounter)' AS _GroupRoleKey
+  //         [__FK_data] AS [__KEY_root]
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_data]);
+
+      CONCATENATE(GroupAssignedRoles)
+      LOAD	
+          [id] AS GroupAssignedRoleID,
+  //         [type],
+  //         [level],
+          [__FK_assignedRoles] & '|' & '$(vAPICallCounter)' AS _GroupRoleKey
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_assignedRoles]);
+
+      NextURL:
+      LOAD	
+          [href_u1] AS NextURL
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_next]);
+
+      DROP TABLE RestConnectorMasterTable;
+
+      LET vParams = SubField(Peek('NextURL',0,'NextURL'),'?',-1);
+      LET vNextURLRows = NoOfRows('NextURL');
+
+      DROP TABLE NextURL;
+
+    LOOP WHILE $(vNextURLRows)>0;
+
+    LEFT JOIN(Groups)
+    LOAD DISTINCT * RESIDENT GroupAssignedRoles;
+
+    DROP TABLE GroupAssignedRoles;
+    DROP FIELD _GroupRoleKey;
+
+    Map_GroupID_GroupName:
+    MAPPING LOAD DISTINCT
+        GroupID,
+        GroupName
+    RESIDENT Groups;
+        
+END SUB
+
+
+
+///$tab Spaces
+SUB get_spaces
+
+    SET vParams = 'limit=100';
+
+    [Spaces]:
+    LOAD * INLINE [SpaceID];
+
+    DO
+
+      LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+      LIB CONNECT TO '$(vu_rest_connection)';
+
+      RestConnectorMasterTable:
+      SQL SELECT 
+          "__KEY_root",
+          (SELECT 
+              "id",
+              "type",
+              "ownerId",
+              "tenantId",
+              "name",
+              "description",
+              "createdAt",
+              "createdBy",
+              "updatedAt",
+              "__KEY_data",
+              "__FK_data",
+              (SELECT 
+                  "__KEY_meta",
+                  "__FK_meta"
+              FROM "meta" PK "__KEY_meta" FK "__FK_meta"),
+              (SELECT 
+                  "__KEY_links",
+                  "__FK_links"
+              FROM "links" PK "__KEY_links" FK "__FK_links")
+          FROM "data" PK "__KEY_data" FK "__FK_data"),
+          (SELECT 
+              "__KEY_links_u0",
+              "__FK_links_u0",
+              (SELECT 
+                  "href" AS "href_u2",
+                  "__FK_next"
+              FROM "next" FK "__FK_next")
+          FROM "links" PK "__KEY_links_u0" FK "__FK_links_u0")
+      FROM JSON (wrap on) "root" PK "__KEY_root"
+      WITH CONNECTION (  
+        URL "https://$(vu_tenant_fqdn)/api/v1/spaces?$(vParams)"
+      );
+
+      CONCATENATE (Spaces)
+      LOAD	
+        [id] AS SpaceID,
+        Capitalize([type]) AS SpaceType,
+        [ownerId] AS SpaceOwnerID,
+        // [tenantId],
+        [name] AS SpaceName,
+        Dual([name],AutoNumber([id])) AS SpaceNameUnique,
+        [name] AS SpaceNameText,
+        [description] AS SpaceDescription,
+        TimeStamp([createdAt]) AS SpaceCreatedTime,
+        [createdBy] AS SpaceCreatedBy
+        // [updatedAt],
+        // [__KEY_data],
+        // [__FK_data] AS [__KEY_root]
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_data]);
+
+      NextURL:
+      LOAD	
+          [href_u2] AS NextURL
+      RESIDENT RestConnectorMasterTable
+      WHERE NOT IsNull([__FK_next]);
+
+      DROP TABLE RestConnectorMasterTable;
+
+      LET vParams = SubField(Peek('NextURL',0,'NextURL'),'?',-1);
+      LET vNextURLRows = NoOfRows('NextURL');
+
+      DROP TABLE NextURL;
+
+    LOOP WHILE $(vNextURLRows)>0;
+
+    AllSpacesMap:
+    MAPPING LOAD DISTINCT
+        SpaceID,
+        1
+    RESIDENT Spaces;
+
+    Map_SpaceID_SpaceType:
+    MAPPING LOAD DISTINCT
+        SpaceID,
+        SpaceType
+    RESIDENT Spaces;
+    
+    AppSharesLink:
+    LOAD DISTINCT
+    	SpaceID & '|' AS _SpaceAppKey,
+        SpaceID,
+        Null() AS AppID
+    RESIDENT Spaces;
+    
+END SUB
+
+
+///$tab Apps
+Sub get_apps
+
+    SET vParams = 'limit=100&resourceType=app,qvapp&noActions=true';
+
+    DO
+
+        LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+        LIB CONNECT TO '$(vu_rest_connection)';
+
+        RestConnectorMasterTable:
+        SQL SELECT 
+            "__KEY_root",
+            (SELECT 
+                "name" AS "name_u0",
+                "resourceCustomAttributes",
+                "resourceUpdatedAt",
+                "resourceType",
+                "resourceId",
+                "resourceCreatedAt",
+                "id" AS "id_u0",
+                "createdAt",
+                "updatedAt",
+                "creatorId",
+                "updaterId",
+                "tenantId",
+                "isFavorited" AS "isFavorited_u0",
+                "ownerId" AS "ownerId_u0",
+                "description" AS "description_u0",
+                "__KEY_data",
+                "__FK_data",
+                (SELECT 
+                    "_resourcetype",
+                    "createdDate",
+                    "description",
+                    "dynamicColor",
+                    "hasSectionAccess",
+                    "id",
+                    "lastReloadTime",
+                    "modifiedDate",
+                    "name",
+                    "originAppId",
+                    "owner",
+                    "ownerId",
+                    "publishTime",
+                    "published",
+                    "spaceId",
+                    "thumbnail",
+                    "encrypted",
+                    "__FK_resourceAttributes"
+                FROM "resourceAttributes" FK "__FK_resourceAttributes"),
+                (SELECT 
+                    "__KEY_links",
+                    "__FK_links"
+                FROM "links" PK "__KEY_links" FK "__FK_links"),
+                (SELECT 
+                    "__KEY_meta",
+                    "__FK_meta"
+                FROM "meta" PK "__KEY_meta" FK "__FK_meta")
+            FROM "data" PK "__KEY_data" FK "__FK_data"),
+            (SELECT 
+                "__KEY_links_u0",
+                "__FK_links_u0",
+                (SELECT 
+                    "href" AS "href_u4",
+                    "__FK_next"
+                FROM "next" FK "__FK_next")
+            FROM "links" PK "__KEY_links_u0" FK "__FK_links_u0")
+        FROM JSON (wrap on) "root" PK "__KEY_root"
+        WITH CONNECTION (  
+          URL "https://$(vu_tenant_fqdn)/api/v1/items?$(vParams)"
+        );
+
+
+        [Apps]:
+        LOAD	
+            Dual([name_u0],AutoNumber([resourceId])) AS AppName,
+            // [resourceCustomAttributes],
+            // [resourceUpdatedAt],
+            // [resourceType],
+            [resourceId] AS AppID,
+            TimeStamp([resourceCreatedAt]) AS AppCreatedTime,
+            // [id_u0] AS [id_u0],
+            // [createdAt],
+            TimeStamp([updatedAt]) AS AppUpdatedTime,
+            [creatorId] AS AppCreatorID,
+            [updaterId] AS AppUpdaterID,
+            // [tenantId],
+            [isFavorited_u0] AS AppIsFavorited,
+            [ownerId_u0] AS AppOwnerID,
+            [description_u0] AS AppDescription,
+            If([resourceType]='app','QS','QV') AS AppType
+        RESIDENT RestConnectorMasterTable
+        WHERE NOT IsNull([__FK_data])
+        AND Len(Trim(resourceId))>=1 AND Len(Trim(name_u0))>=1;
+
+        AppDetails:
+        LOAD	
+            // [_resourcetype],
+            // [createdDate],
+            // [description],
+            // [dynamicColor],
+            [hasSectionAccess] AS AppHasSectionAccess,
+            [id] AS AppID,
+            TimeStamp([lastReloadTime]) AS AppLastReloadTime,
+            // [modifiedDate],
+            // [name],
+            [originAppId] AS AppOriginalID,
+            // [owner] AS AppOwnerName, // removing due to deprecation of field
+            // [ownerId],
+            If([published]='True',1,0) AS AppIsDistributed,
+//             TimeStamp([publishTime]) AS AppPublishedTime,
+            spaceId AS SpaceID,
+            // [thumbnail],
+            [encrypted] AS AppEncrypted
+        RESIDENT RestConnectorMasterTable
+        WHERE NOT IsNull([__FK_resourceAttributes])
+        AND Len(Trim(id))>=1
+        AND ApplyMap('AllSpacesMap',spaceId)=1;
+
+        NextURL:
+        LOAD	
+            [href_u4] AS NextURL
+        RESIDENT RestConnectorMasterTable
+        WHERE NOT IsNull([__FK_next]);
+
+        DROP TABLE RestConnectorMasterTable;
+
+        LET vParams = SubField(Peek('NextURL',0,'NextURL'),'?',-1);
+        LET vNextURLRows = NoOfRows('NextURL');
+
+        DROP TABLE NextURL;
+
+    LOOP WHILE $(vNextURLRows)>0;
+
+    AllAppsMap:
+    MAPPING LOAD DISTINCT
+      AppID,
+      1
+    RESIDENT Apps;
+
+    INNER JOIN(Apps)
+    LOAD * RESIDENT AppDetails;
+
+    DROP TABLE AppDetails;
+    
+    AppSharesLink:
+    LOAD DISTINCT
+    	SpaceID & '|' AS _SpaceAppKey,
+        SpaceID,
+        AppID
+    RESIDENT Apps;
+    
+    DROP FIELD SpaceID FROM Apps;
+
+END SUB
+///$tab Space Types
+SUB get_space_types
+
+    LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+    LIB CONNECT TO '$(vu_rest_connection)';
+
+    RestConnectorMasterTable:
+    SQL SELECT 
+        "@Value"
+    FROM JSON (wrap off) "data" ArrayValueAlias "@Value"
+    WITH CONNECTION (  
+      URL "https://$(vu_tenant_fqdn)/api/v1/spaces/types"
+    );
+
+    [SpaceTypes]:
+    LOAD	
+        Capitalize([@Value]) AS SpaceType
+    RESIDENT RestConnectorMasterTable;
+
+    DROP TABLE RestConnectorMasterTable;
+
+END SUB
+///$tab Space Role Mapping
+SUB space_role_mapping
+
+    Map_Temp_SpaceRole_SpaceRoleName:
+    MAPPING LOAD
+        SpaceAssignmentRoleSpaceType & '|' & RoleNameRaw AS SpaceAssignmentRoleSpaceTypeKey,
+        RoleNameUI
+    INLINE [
+        SpaceAssignmentRoleSpaceType	,RoleNameRaw		,RoleNameUI			
+        Shared							,consumer			,Can view			
+        Managed							,consumer			,Can view			
+        Data							,consumer			,Can view			
+        Shared							,dataconsumer		,Can consume data	
+        Managed							,dataconsumer		,Can consume data	
+        Data							,dataconsumer		,Can consume data	
+        Managed							,facilitator		,Can manage			
+        Data							,facilitator		,Can manage			
+        Shared							,facilitator		,Can manage			
+        Shared							,producer			,Can edit			
+        Data							,producer			,Can edit			
+        Managed							,contributor		,Can contribute		
+        Managed							,publisher			,Can publish		
+        Data							,operator			,Can operate		
+        Shared							,Owner				,Owner				
+        Managed							,Owner				,Owner				
+        Data							,Owner				,Owner
+        Shared							,codeveloper		,Can edit data in apps
+        Managed							,basicconsumer		,Has restricted view
+    ];
+    
+    [SpaceRole_SpaceRoleName]:
+    LOAD * INLINE [
+    	SpaceAssignmentRoleSpaceType,RoleNameRaw,SpaceAssignmentRoleSpaceTypeKey,RoleNameUI
+    ];
+
+    FOR EACH spaceType in FieldValueList('SpaceType')
+
+        LET vSpaceID = Lookup('SpaceID', 'SpaceType', '$(spaceType)', 'Spaces');
+
+        IF Len('$(vSpaceID)') > 0 THEN
+
+            LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+            LIB CONNECT TO '$(vu_rest_connection)';
+
+            RestConnectorMasterTable:
+            SQL SELECT 
+                "__KEY_root",
+                (SELECT 
+                    "__FK_meta",
+                    "__KEY_meta",
+                    (SELECT 
+                        "@Value" AS "@Value_u1",
+                        "__FK_assignableRoles"
+                    FROM "assignableRoles" FK "__FK_assignableRoles" ArrayValueAlias "@Value_u1")
+                FROM "meta" PK "__KEY_meta" FK "__FK_meta")
+            FROM JSON (wrap on) "root" PK "__KEY_root"
+            WITH CONNECTION (  
+              URL "https://$(vu_tenant_fqdn)/api/v1/spaces/$(vSpaceID)"
+            );
+
+            CONCATENATE(SpaceRole_SpaceRoleName)
+            LOAD
+                '$(spaceType)' AS SpaceAssignmentRoleSpaceType,
+                [@Value_u1] AS RoleNameRaw,
+                '$(spaceType)' & '|' & [@Value_u1] AS SpaceAssignmentRoleSpaceTypeKey,
+                ApplyMap('Map_Temp_SpaceRole_SpaceRoleName','$(spaceType)' & '|' & [@Value_u1],[@Value_u1] & ' (UI name unknown)') AS RoleNameUI
+            RESIDENT RestConnectorMasterTable
+            WHERE NOT IsNull([__FK_assignableRoles])
+            AND NOT ([@Value_u1]='publisher' AND '$(spaceType)'='Data');
+            
+            CONCATENATE(SpaceRole_SpaceRoleName)
+            LOAD
+                '$(spaceType)' AS SpaceAssignmentRoleSpaceType,
+                '$(spaceType)|Owner' AS SpaceAssignmentRoleSpaceTypeKey,
+                'Owner' AS RoleNameRaw,
+           		'Owner' AS RoleNameUI
+            AUTOGENERATE 1;
+
+            DROP TABLE RestConnectorMasterTable;
+
+        END IF
+
+    NEXT spaceType
+    
+    DROP TABLE SpaceTypes;
+    
+    Map_SpaceRoleKey_SpaceRoleName:
+    MAPPING LOAD DISTINCT
+    	SpaceAssignmentRoleSpaceTypeKey,
+        RoleNameUI
+    RESIDENT SpaceRole_SpaceRoleName;
+
+END SUB
+
+
+
+///$tab Space Assignments
+SUB get_space_assignments
+  
+  [SpaceAssignments]:
+  LOAD * INLINE [SpaceID];
+  
+  SpaceAssignmentRoles:
+  LOAD * INLINE [
+  	SpaceAssignmentRole,_KeySpaceRoleAssignment
+  ];
+  
+  FOR i=0 TO NoOfRows('Spaces')-1
+  
+  		SET vParams = 'limit=100';
+  		
+		LET vSpaceID = Peek('SpaceID',$(i),'Spaces');
+
+      	DO
+
+          LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+          LIB CONNECT TO '$(vu_rest_connection)';
+
+          RestConnectorMasterTable:
+          SQL SELECT 
+              "__KEY_root",
+              (SELECT 
+                  "id",
+                  "type",
+                  "assigneeId",
+                  "spaceId",
+                  "tenantId",
+                  "createdAt",
+                  "createdBy",
+                  "updatedAt",
+                  "__KEY_data",
+                  "__FK_data",
+                  (SELECT 
+                      "@Value",
+                      "__FK_roles"
+                  FROM "roles" FK "__FK_roles" ArrayValueAlias "@Value")
+              FROM "data" PK "__KEY_data" FK "__FK_data"),
+              (SELECT 
+                  "__FK_links_u0",
+                  "__KEY_links_u0",
+                  (SELECT 
+                      "href" AS "href_u2",
+                      "__FK_next"
+                  FROM "next" FK "__FK_next")
+              FROM "links" PK "__KEY_links_u0" FK "__FK_links_u0")
+          FROM JSON (wrap on) "root" PK "__KEY_root"
+          WITH CONNECTION (  
+            URL "https://$(vu_tenant_fqdn)/api/v1/spaces/$(vSpaceID)/assignments?$(vParams)"
+          );
+
+          CONCATENATE (SpaceAssignments)
+          LOAD	
+//           	  [id],
+//               [type],
+//               [assigneeId],
+              If([type]='user',[assigneeId]) AS UserIDTemp,
+              If([type]='group',[assigneeId]) AS GroupID,
+              [spaceId] AS SpaceID,
+			  spaceId & '|' AS _SpaceAppKey,
+              'Space' AS SpaceRoleAssignmentTypeLevel,
+              ApplyMap('Map_SpaceID_SpaceType',[spaceId]) AS SpaceAssignmentRoleSpaceType,
+//               [tenantId],
+//               [createdAt],
+//               [createdBy],
+//               [updatedAt],
+              [__KEY_data] & '|' & '$(vAPICallCounter)' AS _KeySpaceRoleAssignment
+//               [__FK_data] AS [__KEY_root]
+          RESIDENT RestConnectorMasterTable
+          WHERE NOT IsNull([__FK_data]);
+
+          CONCATENATE(SpaceAssignmentRoles)
+          LOAD	
+          	  ApplyMap('Map_SpaceRoleKey_SpaceRoleName',
+              		Lookup('SpaceAssignmentRoleSpaceType','_KeySpaceRoleAssignment',[__FK_roles] & '|' & '$(vAPICallCounter)','SpaceAssignments') & '|' & Trim([@Value])
+                    ) AS SpaceAssignmentRole,
+              [__FK_roles] & '|' & '$(vAPICallCounter)' AS _KeySpaceRoleAssignment
+          RESIDENT RestConnectorMasterTable
+          WHERE NOT IsNull([__FK_roles]);
+          
+
+          NextURL:
+          LOAD	
+              [href_u2] AS NextURL
+          RESIDENT RestConnectorMasterTable
+          WHERE NOT IsNull([__FK_next]);
+
+          DROP TABLE RestConnectorMasterTable;
+
+          LET vParams = SubField(Peek('NextURL',0,'NextURL'),'?',-1);
+          LET vNextURLRows = NoOfRows('NextURL');
+
+          DROP TABLE NextURL;
+
+        LOOP WHILE $(vNextURLRows)>0;
+      
+    NEXT i
+  
+END SUB
+
+
+
+
+
+
+///$tab App Shares
+SUB get_app_shares
+
+    [AppShares]:
+    LOAD * INLINE [
+    	AppShareID,_AppShareKey,AppShareAssigneeID,AppShareGroupID,AppShareSpaceType,AppShareGroupName,AppShareSpaceID,AppShareAppID
+    ];
+    
+    AppShareRoles:
+    LOAD * INLINE [
+    	AppShareRole,_AppShareKey
+    ];
+    
+    FOR EACH spaceID in FieldValueList('SpaceID')
+    
+    	SET vParams = 'limit=100&resourceType=app';
+
+        DO
+
+          LET vAPICallCounter = $(vAPICallCounter) + 1;
+
+          LIB CONNECT TO '$(vu_rest_connection)';
+
+          RestConnectorMasterTable:
+          SQL SELECT 
+              "__KEY_root",
+              (SELECT 
+                  "id",
+                  "type",
+                  "assigneeId",
+                  "spaceId",
+                  "spaceType",
+                  "tenantId",
+                  "createdAt",
+                  "updatedAt",
+                  "createdBy",
+                  "updatedBy",
+                  "resourceType",
+                  "resourceId",
+                  "resourceName",
+                  "__KEY_data",
+                  "__FK_data",
+                  (SELECT 
+                      "@Value",
+                      "__FK_roles"
+                  FROM "roles" FK "__FK_roles" ArrayValueAlias "@Value")
+              FROM "data" PK "__KEY_data" FK "__FK_data"),
+              (SELECT 
+                  "__FK_links_u0",
+                  "__KEY_links_u0",
+                  (SELECT 
+                      "href" AS "href_u2",
+                      "__FK_next"
+                  FROM "next" FK "__FK_next")
+              FROM "links" PK "__KEY_links_u0" FK "__FK_links_u0")
+          FROM JSON (wrap on) "root" PK "__KEY_root"
+          WITH CONNECTION (  
+            URL "https://$(vu_tenant_fqdn)/api/v1/spaces/$(spaceID)/shares?$(vParams)"
+          );
+                    
+          CONCATENATE (AppShares)
+          LOAD	
+              [id] AS AppShareID,
+              [type] AS AppShareType,
+              If([type]='group',ApplyMap('Map_GroupID_GroupName',assigneeId),Null()) AS AppShareGroupName,
+              If([type]='group',assigneeId) AS AppShareGroupID,
+              [assigneeId] AS AppShareAssigneeID,
+              [spaceId] AS AppShareSpaceID,
+              Capitalize([spaceType]) AS AppShareSpaceType,
+    //           [tenantId],
+    //           [createdAt],
+    //           [updatedAt],
+    //           [createdBy],
+    //           [updatedBy],
+    //           [resourceType],
+              [resourceId] AS AppShareAppID,
+              [resourceName] AS AppShareAppName,
+              [__KEY_data] & '|' & '$(vAPICallCounter)' AS _AppShareKey
+    //           [__FK_data] AS [__KEY_root]
+          RESIDENT RestConnectorMasterTable
+          WHERE NOT IsNull([__FK_data]);
+
+          CONCATENATE(AppShareRoles)
+          LOAD	
+          	  ApplyMap('Map_SpaceRoleKey_SpaceRoleName',
+              		Lookup('AppShareSpaceType','_AppShareKey',[__FK_roles] & '|' & '$(vAPICallCounter)','AppShares') & '|' & Trim([@Value])
+                    ) AS AppShareRole,
+//               [@Value] AS AppShareRole,
+              [__FK_roles] & '|' & '$(vAPICallCounter)' AS _AppShareKey
+          RESIDENT RestConnectorMasterTable
+          WHERE NOT IsNull([__FK_roles]);
+
+          NextURL:
+          LOAD	
+              [href_u2] AS NextURL
+          RESIDENT RestConnectorMasterTable
+          WHERE NOT IsNull([__FK_next]);
+
+          DROP TABLE RestConnectorMasterTable;
+                    
+          LET vParams = SubField(Peek('NextURL',0,'NextURL'),'?',-1);
+          LET vNextURLRows = NoOfRows('NextURL');
+
+          DROP TABLE NextURL;
+          
+        LOOP WHILE $(vNextURLRows)>0;
+        
+    NEXT spaceID
+        
+END SUB
+
+
+
+
+
+
+
+///$tab Transform
+SUB transform
+
+    ////////////////////////////////
+    // Add app shares to space assignments
+        
+    CONCATENATE(SpaceAssignmentRoles)
+    LOAD DISTINCT
+    	_AppShareKey AS _KeySpaceRoleAssignment,
+        AppShareRole AS SpaceAssignmentRole
+    RESIDENT AppShareRoles;
+    
+    CONCATENATE(SpaceAssignments)
+    LOAD DISTINCT
+    	_AppShareKey AS _KeySpaceRoleAssignment,
+        AppShareAssigneeID AS UserIDTemp,
+        AppShareGroupID AS GroupID,
+        AppShareSpaceType AS SpaceAssignmentRoleSpaceType,
+        If(Len(AppShareGroupName)>0,AppShareGroupName,'<Direct>') AS SpaceRoleInheritedFromGroupTemp,
+        If(Len(AppShareGroupName)>0,'Inherited','Direct') AS SpaceRoleAssignmentTypeTemp,
+        AppShareSpaceID AS SpaceID,
+        AppShareAppID,
+        AppShareSpaceID & '|' & AppShareAppID AS _SpaceAppKey,
+        'Shared' AS SpaceRoleAssignmentTypeLevel
+    RESIDENT AppShares;
+    
+    DROP TABLE AppShareRoles
+    		   ,AppShares
+               ; 
+                   
+	////////////////////////////////
+
+	// Map inherited groups to users
+	UserInheritedRoles:
+    NOCONCATENATE
+    LOAD DISTINCT
+    	*,
+        Null() AS UserRoleInheritedFromGroup
+    RESIDENT UserGroups;
+    
+    INNER JOIN(UserInheritedRoles)
+    LOAD DISTINCT
+    	GroupID,
+        GroupAssignedRoleID,
+        GroupName
+    RESIDENT Groups
+    WHERE Len(GroupAssignedRoleID)>=1;
+    
+    DROP FIELDS GroupAssignedRoleID FROM Groups;
+    
+    CONCATENATE(UserRoles)
+    LOAD
+    	_UserKey,
+        GroupAssignedRoleID AS UserRoleID,
+        GroupName AS UserRoleInheritedFromGroup,
+        GroupID AS UserRoleInheritedFromGroupID,
+        'Inherited' AS UserRoleAssignmentType,
+        '✔' AS UserRoleCheck
+    RESIDENT UserInheritedRoles;
+    
+    DROP TABLE UserInheritedRoles;
+    
+    // Propogate user groups to users to space role assignments
+    GroupID_UserKeyTemp:
+    NOCONCATENATE
+    LOAD
+    	*
+    RESIDENT UserGroups;
+    
+    LEFT JOIN(GroupID_UserKeyTemp)
+    LOAD DISTINCT
+    	UserID,
+        [_UserKey]
+    RESIDENT Users;
+    
+    LEFT JOIN(SpaceAssignments)
+    LOAD
+    	GroupID,
+        UserID
+    RESIDENT GroupID_UserKeyTemp;
+    
+    DROP TABLE GroupID_UserKeyTemp;
+    
+    RENAME TABLE SpaceAssignments TO TEMP;
+    
+    AUTONUMBER _KeySpaceRoleAssignment;
+    
+    SpaceAssignments:
+    LOAD DISTINCT
+    	_KeySpaceRoleAssignment,
+        SpaceID,
+        AppShareAppID,
+        RangeMaxString(UserIDTemp,UserID) AS UserID,
+        
+        	If(Len(SpaceRoleInheritedFromGroupTemp)>0,SpaceRoleInheritedFromGroupTemp,
+        	If(Len(GroupID)>0,ApplyMap('Map_GroupID_GroupName',GroupID),
+            '<Direct>')) AS SpaceRoleInheritedFromGroup,
+        
+        	If(Len(SpaceRoleAssignmentTypeTemp)>0,SpaceRoleAssignmentTypeTemp,
+        	If(Len(GroupID)>0,'Inherited',
+            'Direct')) AS SpaceRoleAssignmentType,
+        
+        SpaceAssignmentRoleSpaceType,    
+        _SpaceAppKey,
+        SpaceRoleAssignmentTypeLevel
+    RESIDENT TEMP
+    WHERE (EXISTS (UserID,UserIDTemp) AND Len(GroupID)=0) OR Len(GroupID)>0
+    ORDER BY _KeySpaceRoleAssignment ASC;
+    
+    DROP TABLE TEMP;
+    
+    LET vMax_KeySpaceRoleAssignment = If(NoOfRows('SpaceAssignments')>0,Peek('_KeySpaceRoleAssignment',-1,'SpaceAssignments'),0);
+    
+    CONCATENATE(SpaceAssignments)
+    LOAD DISTINCT
+    	RecNo() + $(vMax_KeySpaceRoleAssignment) AS _KeySpaceRoleAssignment,
+        SpaceOwnerID AS UserID,
+        SpaceID,
+        '<Direct>' AS SpaceRoleInheritedFromGroup,
+        'Direct' AS SpaceRoleAssignmentType,
+        ApplyMap('Map_SpaceID_SpaceType',SpaceID) AS SpaceAssignmentRoleSpaceType,
+        SpaceID & '|' AS _SpaceAppKey,
+        'Space' AS SpaceRoleAssignmentTypeLevel
+    RESIDENT Spaces;
+    
+    CONCATENATE(SpaceAssignmentRoles)
+    LOAD DISTINCT
+    	RecNo() + $(vMax_KeySpaceRoleAssignment) AS _KeySpaceRoleAssignment,
+        'Owner' AS SpaceAssignmentRole
+    AUTOGENERATE NoOfRows('Spaces');
+    
+//  Append to link table
+    AppSharesLink:
+    LOAD DISTINCT
+    	_SpaceAppKey,
+        SpaceID,
+        AppShareAppID AS AppID
+    RESIDENT SpaceAssignments;
+    
+    DROP FIELD SpaceID FROM SpaceAssignments;
+    DROP FIELD AppShareAppID;
+    
+    Map__KeySpaceRoleAssignment_IsSpaceOwner:
+    MAPPING LOAD DISTINCT
+    	_KeySpaceRoleAssignment,
+        'True'
+    RESIDENT SpaceAssignmentRoles
+    WHERE SpaceAssignmentRole='Owner';
+    
+	// Fill table with empty user roles
+	SpaceAssignmentRoleAllPlaceholder:
+    LOAD DISTINCT
+    	_KeySpaceRoleAssignment,
+        SpaceAssignmentRoleSpaceType
+    RESIDENT SpaceAssignments
+    WHERE ApplyMap('Map__KeySpaceRoleAssignment_IsSpaceOwner',_KeySpaceRoleAssignment)='True';
+    
+    LEFT JOIN(SpaceAssignmentRoleAllPlaceholder)
+    LOAD DISTINCT
+    	RoleNameUI AS SpaceAssignmentRole,
+        SpaceAssignmentRoleSpaceType
+    RESIDENT SpaceRole_SpaceRoleName;
+    
+    OUTER JOIN(SpaceAssignmentRoleAllPlaceholder)
+    LOAD 
+    	*
+    RESIDENT SpaceAssignmentRoles;
+        
+    DROP TABLE SpaceAssignmentRoles;
+    
+    DROP TABLE SpaceRole_SpaceRoleName;
+        
+    SpaceAssignmentRoles:
+    NOCONCATENATE
+    LOAD
+    	_KeySpaceRoleAssignment,
+        SpaceAssignmentRole,
+        '✔' AS SpaceAssignmentRoleCheck
+    RESIDENT SpaceAssignmentRoleAllPlaceholder;
+    
+    DROP TABLE SpaceAssignmentRoleAllPlaceholder;
+
+    // Autonumber (not using wildcard since "_KeySpaceRoleAssignment" had to be done earlier)
+	AUTONUMBER	_SpaceAppKey
+    			,_UserKey
+                ,_UserRolePermissionKey
+    			;
+
+END SUB
+///$tab Main
+//// App Variables & Messaging
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$ ###0.00;-$ ###0.00';
+SET TimeFormat='h:mm:ss TT';
+SET DateFormat='M/D/YYYY';
+SET TimestampFormat='M/D/YYYY h:mm:ss[.fff] TT';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-US';
+SET CreateSearchIndexOnReload=1;
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+SET HidePrefix='_';
+
+// Reset these variables
+LET vReloadStart 	= Now(1);
+SET vStartMsg=; 
+SET vComp=;
+
+SET vAppName		= 'Access Evaluator';
+SET vAppVersion		= '2.0.3';
+LET vComp 			= ComputerName(); 
+LET vEngineVer 		= PurgeChar(EngineVersion(),Chr(39)); 
+LET vStartMsg 		= 'Reloading $(vAppName) $(vAppVersion) from $(vComp) running QIX Engine version $(vEngineVer)';
+
+TRACE $(vStartMsg);
+
+FOR EACH sub_routine in 'variables','check_version','get_roles','get_users','get_groups','get_spaces','get_apps','get_space_types','space_role_mapping','get_space_assignments','get_app_shares','transform'
+  TRACE Working on $(sub_routine);
+  LET sub_start = Num(Now(1));
+  CALL $(sub_routine)
+  LET sub_finish = Num(Now(1));
+  LET sub_duration = Num(Round((sub_finish-sub_start)*86400),'#,##0');
+  TRACE $(sub_routine) completed after $(sub_duration) seconds.;
+NEXT sub_routine

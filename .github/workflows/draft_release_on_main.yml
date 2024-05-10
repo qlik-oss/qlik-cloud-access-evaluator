@@ -27,14 +27,14 @@ jobs:
           echo "APPNAME=$APPNAME" >> $GITHUB_ENV
       
       - name: Retrieve latest installer PDF from qlik-cloud-monitoring-apps repo
-        uses: robinraju/release-downloader@v1.8
+        uses: robinraju/release-downloader@v1.10
         with:
           repository: "qlik-oss/qlik-cloud-monitoring-apps"
           latest: true
           fileName: "Qlik-Cloud-Monitoring-Applications-Installation-Guide.pdf"
         
       - name: Draft a release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{ env.RELVER }}
           body: |
