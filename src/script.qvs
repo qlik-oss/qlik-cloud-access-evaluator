@@ -777,12 +777,14 @@ SUB space_role_mapping
         Data							,producer			,Can edit			
         Managed							,contributor		,Can contribute		
         Managed							,publisher			,Can publish		
-        Data							,operator			,Can operate		
+        Data							,operator			,Can operate
+        Managed							,operator			,Can operate
         Shared							,Owner				,Owner				
         Managed							,Owner				,Owner				
         Data							,Owner				,Owner
         Shared							,codeveloper		,Can edit data in apps
         Managed							,basicconsumer		,Has restricted view
+        Data							,datapreview		,Can view data
     ];
     
     [SpaceRole_SpaceRoleName]:
@@ -1296,7 +1298,7 @@ SET vStartMsg=;
 SET vComp=;
 
 SET vAppName		= 'Access Evaluator';
-SET vAppVersion		= '2.0.3';
+SET vAppVersion		= '2.0.4';
 LET vComp 			= ComputerName(); 
 LET vEngineVer 		= PurgeChar(EngineVersion(),Chr(39)); 
 LET vStartMsg 		= 'Reloading $(vAppName) $(vAppVersion) from $(vComp) running QIX Engine version $(vEngineVer)';
