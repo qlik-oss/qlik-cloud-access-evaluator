@@ -1,0 +1,73 @@
+[
+  {
+    "qInfo": {
+      "qId": "366d992c-5907-45ec-b8a8-1210d0618c2d",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vSpaceTypeSelect",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "Managed",
+    "tags": []
+  },
+  {
+    "qInfo": {
+      "qId": "ee3c3ee9-6f8f-4683-bb53-fb698f76664e",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vu_qvd_storage_connection",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": ":DataFiles"
+  },
+  {
+    "qInfo": {
+      "qId": "ce952b23-a0c0-4c3e-9b46-eb9e325fa7d8",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vNextURL",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "\u0026next="
+  },
+  {
+    "qInfo": {
+      "qId": "f776a0e7-520a-4ce2-af07-e389f4e60024",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vParams",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    }
+  },
+  {
+    "qInfo": {
+      "qId": "566477e9-c777-4758-95a7-cfb985b9c2bf",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vAccessEvaluationContainerTab",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "Space Access",
+    "tags": []
+  }
+]

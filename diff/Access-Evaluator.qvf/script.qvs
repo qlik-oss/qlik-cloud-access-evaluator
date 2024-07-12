@@ -186,7 +186,7 @@ END SUB
 ///$tab Users
 SUB get_users
 
-    SET vParams = 'limit=100';
+    SET vParams = 'limit=100&filter=(status eq ""active"")';
 
     UserGroups:
     LOAD * INLINE [
@@ -463,6 +463,12 @@ SUB get_groups
     MAPPING LOAD DISTINCT
         GroupID,
         GroupName
+    RESIDENT Groups;
+    
+    Map_AllGroupIDs:
+    MAPPING LOAD DISTINCT
+        GroupID,
+        1
     RESIDENT Groups;
         
 END SUB
@@ -766,7 +772,8 @@ SUB space_role_mapping
         SpaceAssignmentRoleSpaceType	,RoleNameRaw		,RoleNameUI			
         Shared							,consumer			,Can view			
         Managed							,consumer			,Can view			
-        Data							,consumer			,Can view			
+        Data							,consumer			,Can view
+        Data							,datapreview		,Can view data
         Shared							,dataconsumer		,Can consume data	
         Managed							,dataconsumer		,Can consume data	
         Data							,dataconsumer		,Can consume data	
@@ -777,7 +784,8 @@ SUB space_role_mapping
         Data							,producer			,Can edit			
         Managed							,contributor		,Can contribute		
         Managed							,publisher			,Can publish		
-        Data							,operator			,Can operate		
+        Data							,operator			,Can operate
+        Managed							,operator			,Can operate
         Shared							,Owner				,Owner				
         Managed							,Owner				,Owner				
         Data							,Owner				,Owner
@@ -1184,7 +1192,7 @@ SUB transform
         _SpaceAppKey,
         SpaceRoleAssignmentTypeLevel
     RESIDENT TEMP
-    WHERE (EXISTS (UserID,UserIDTemp) AND Len(GroupID)=0) OR Len(GroupID)>0
+    WHERE ((EXISTS (UserID,UserIDTemp) AND Len(GroupID)=0) OR Len(GroupID)>0) AND ApplyMap('Map_AllGroupIDs',RangeMaxString(UserIDTemp,UserID))<>1
     ORDER BY _KeySpaceRoleAssignment ASC;
     
     DROP TABLE TEMP;
@@ -1296,7 +1304,7 @@ SET vStartMsg=;
 SET vComp=;
 
 SET vAppName		= 'Access Evaluator';
-SET vAppVersion		= '2.0.3';
+SET vAppVersion		= '2.1.0';
 LET vComp 			= ComputerName(); 
 LET vEngineVer 		= PurgeChar(EngineVersion(),Chr(39)); 
 LET vStartMsg 		= 'Reloading $(vAppName) $(vAppVersion) from $(vComp) running QIX Engine version $(vEngineVer)';

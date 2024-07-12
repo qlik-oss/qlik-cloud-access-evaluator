@@ -1,0 +1,10 @@
+{
+  "qTitle": "Access Evaluator 2.1.0",
+  "qThumbnail": {
+    "qUrl": "/api/v1/apps/<appId>/media/files/Icon_Security_grey.png"
+  },
+  "description": "The Access Evaluator is a comprehensive dashboard to analyze user roles, access, and permissions across a Qlik Sense tenant.\n\nCreated by Daniel Pilla, Master Principal Analytics Platform Architect, Qlik\n\n{v2.1.0}",
+  "qUsage": "ANALYTICS",
+  "published": false,
+  "hassectionaccess": false
+}
