@@ -8,12 +8,74 @@
   "sheetTitleGradientColor": "",
   "sheetTitleColor": "",
   "sheetLogoThumbnail": {
-    "qStaticContentUrlDef": {
-      "qUrl": "/api/v1/apps/<appId>/media/files/Qlik-Logo_RGB.png"
-    }
+    "qStaticContentUrlDef": {}
   },
   "sheetLogoPosition": "",
   "rtl": false,
   "theme": "horizon",
-  "disableCellNavMenu": true
+  "disableCellNavMenu": true,
+  "presets": [
+    {
+      "id": "default"
+    },
+    {
+      "name": "Presets.Untitled",
+      "id": "pRtwh",
+      "navigationBar": {
+        "components": {
+          "logo": {
+            "show": true,
+            "placement": "left"
+          },
+          "tabsManagerAdvanced": {
+            "show": true,
+            "placement": "left"
+          },
+          "appTitle": {
+            "show": true,
+            "placement": "center"
+          },
+          "insightAdvisor": {
+            "show": true,
+            "placement": "right"
+          },
+          "notificationMenu": {
+            "show": true,
+            "placement": "right"
+          },
+          "appSwitcher": {
+            "show": true,
+            "placement": "right"
+          },
+          "profile": {
+            "show": true,
+            "placement": "right"
+          }
+        }
+      },
+      "toolbar": {
+        "show": true,
+        "components": {
+          "assets": {
+            "show": true,
+            "placement": "left"
+          },
+          "selections": {
+            "show": true,
+            "placement": "left"
+          }
+        }
+      },
+      "sheetHeader": {
+        "show": false,
+        "components": {
+          "sheetTitle": {
+            "show": true,
+            "placement": "left"
+          }
+        }
+      }
+    }
+  ],
+  "activePreset": "pRtwh"
 }
