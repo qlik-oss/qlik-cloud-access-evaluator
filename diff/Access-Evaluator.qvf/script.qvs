@@ -1304,7 +1304,7 @@ SET vStartMsg=;
 SET vComp=;
 
 SET vAppName		= 'Access Evaluator';
-SET vAppVersion		= '2.1.0';
+SET vAppVersion		= '2.1.1';
 LET vComp 			= ComputerName(); 
 LET vEngineVer 		= PurgeChar(EngineVersion(),Chr(39)); 
 LET vStartMsg 		= 'Reloading $(vAppName) $(vAppVersion) from $(vComp) running QIX Engine version $(vEngineVer)';
