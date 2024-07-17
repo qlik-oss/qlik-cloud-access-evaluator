@@ -30,7 +30,11 @@ SET vu_rest_connection = ':monitoring_apps_REST';
     /_/  |_\___/ \___/ \___//____/ /____/      /_____/  _____/ \__,_/ /_/  \__,_/ \__,_/ \__/ \____//_/     
     
 	
-    The Access Evaluator is a comprehensive dashboard to analyze user roles, access, and permissions across a Qlik Sense tenant.
+    The Access Evaluator is a comprehensive dashboard to analyze user roles, access, and permissions across a Qlik Cloud tenant.
+    
+    This application provides access information for users based on their assigned roles. It does this using a snapshot of role
+    permissions taken at time of release, and does not consider user entitlements as a factor when evaluating what the user
+    can access. Do not use this tool for audit or regulatory needs.
 
     Copyright 2023 QlikTech International
     Created by Daniel Pilla, Master Principal Analytics Platform Architect, Qlik
@@ -1304,7 +1308,7 @@ SET vStartMsg=;
 SET vComp=;
 
 SET vAppName		= 'Access Evaluator';
-SET vAppVersion		= '2.1.1';
+SET vAppVersion		= '2.1.2';
 LET vComp 			= ComputerName(); 
 LET vEngineVer 		= PurgeChar(EngineVersion(),Chr(39)); 
 LET vStartMsg 		= 'Reloading $(vAppName) $(vAppVersion) from $(vComp) running QIX Engine version $(vEngineVer)';
