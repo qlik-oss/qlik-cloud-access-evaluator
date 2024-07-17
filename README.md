@@ -7,7 +7,7 @@
 
 > **Note**
 > This application provides access information for users based on their assigned roles. It does this using a snapshot of role
-> permissions correct at time of release, and does not consider user entitlements as a factor when evaluating what the user can
+> permissions taken at time of release, and does not consider user entitlements as a factor when evaluating what the user can
 > access. Do not use this tool for audit or regulatory needs.
 
 The Access Evaluator is a Qlik Sense application built for Qlik Cloud, which helps
