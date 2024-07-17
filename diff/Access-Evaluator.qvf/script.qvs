@@ -33,7 +33,7 @@ SET vu_rest_connection = ':monitoring_apps_REST';
     The Access Evaluator is a comprehensive dashboard to analyze user roles, access, and permissions across a Qlik Cloud tenant.
     
     This application provides access information for users based on their assigned roles. It does this using a snapshot of role
-    permissions correct at time of release, and does not consider user entitlements as a factor when evaluating what the user
+    permissions taken at time of release, and does not consider user entitlements as a factor when evaluating what the user
     can access. Do not use this tool for audit or regulatory needs.
 
     Copyright 2023 QlikTech International
