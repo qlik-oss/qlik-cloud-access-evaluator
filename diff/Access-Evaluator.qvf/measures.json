@@ -1,6 +1,31 @@
 [
   {
     "qInfo": {
+      "qId": "ALjHK",
+      "qType": "measure"
+    },
+    "qMeasure": {
+      "qLabel": "Roles",
+      "qDef": "Count(DISTINCT UserRoleID)",
+      "qGrouping": "N",
+      "qExpressions": [],
+      "qActiveExpression": 0,
+      "qNumFormat": {
+        "qType": "U",
+        "qnDec": 10,
+        "qUseThou": 0
+      },
+      "numFormatFromTemplate": true,
+      "coloring": {}
+    },
+    "qMetaDef": {
+      "title": "Roles",
+      "description": "",
+      "tags": []
+    }
+  },
+  {
+    "qInfo": {
       "qId": "ChjLJm",
       "qType": "measure"
     },
@@ -51,6 +76,31 @@
   },
   {
     "qInfo": {
+      "qId": "XtpVpHd",
+      "qType": "measure"
+    },
+    "qMeasure": {
+      "qLabel": "Used Roles",
+      "qDef": "Count({\u003cUserRoleID={\"=Count(DISTINCT UserID)\u003e0\"}\u003e}DISTINCT UserRoleID)",
+      "qGrouping": "N",
+      "qExpressions": [],
+      "qActiveExpression": 0,
+      "qNumFormat": {
+        "qType": "U",
+        "qnDec": 10,
+        "qUseThou": 0
+      },
+      "numFormatFromTemplate": true,
+      "coloring": {}
+    },
+    "qMetaDef": {
+      "title": "Used Roles",
+      "description": "",
+      "tags": []
+    }
+  },
+  {
+    "qInfo": {
       "qId": "ctfFS",
       "qType": "measure"
     },
@@ -70,31 +120,6 @@
     },
     "qMetaDef": {
       "title": "Shared Apps",
-      "description": "",
-      "tags": []
-    }
-  },
-  {
-    "qInfo": {
-      "qId": "rCueyM",
-      "qType": "measure"
-    },
-    "qMeasure": {
-      "qLabel": "Apps",
-      "qDef": "Count(DISTINCT AppName)",
-      "qGrouping": "N",
-      "qExpressions": [],
-      "qActiveExpression": 0,
-      "qNumFormat": {
-        "qType": "U",
-        "qnDec": 10,
-        "qUseThou": 0
-      },
-      "numFormatFromTemplate": true,
-      "coloring": {}
-    },
-    "qMetaDef": {
-      "title": "Apps",
       "description": "",
       "tags": []
     }
@@ -151,12 +176,12 @@
   },
   {
     "qInfo": {
-      "qId": "XtpVpHd",
+      "qId": "rCueyM",
       "qType": "measure"
     },
     "qMeasure": {
-      "qLabel": "Used Roles",
-      "qDef": "Count({\u003cUserRoleID={\"=Count(DISTINCT UserID)\u003e0\"}\u003e}DISTINCT UserRoleID)",
+      "qLabel": "Apps",
+      "qDef": "Count(DISTINCT AppName)",
       "qGrouping": "N",
       "qExpressions": [],
       "qActiveExpression": 0,
@@ -169,7 +194,7 @@
       "coloring": {}
     },
     "qMetaDef": {
-      "title": "Used Roles",
+      "title": "Apps",
       "description": "",
       "tags": []
     }
@@ -195,31 +220,6 @@
     },
     "qMetaDef": {
       "title": "Users with Roles",
-      "description": "",
-      "tags": []
-    }
-  },
-  {
-    "qInfo": {
-      "qId": "ALjHK",
-      "qType": "measure"
-    },
-    "qMeasure": {
-      "qLabel": "Roles",
-      "qDef": "Count(DISTINCT UserRoleID)",
-      "qGrouping": "N",
-      "qExpressions": [],
-      "qActiveExpression": 0,
-      "qNumFormat": {
-        "qType": "U",
-        "qnDec": 10,
-        "qUseThou": 0
-      },
-      "numFormatFromTemplate": true,
-      "coloring": {}
-    },
-    "qMetaDef": {
-      "title": "Roles",
       "description": "",
       "tags": []
     }
